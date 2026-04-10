@@ -38,7 +38,7 @@ export abstract class BaseEntitiy implements IBaseEntity {
     this: new (entity: I) => T,
     id: number,
   ): Promise<T | null> {
-    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY,this)} WHERE id=?`;
+    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)} WHERE id=?`;
     // const result = await db.execute(query, [id]);
     // return result.length > 0 ? new this(result[0]) : null;
     console.log(query);
@@ -48,7 +48,7 @@ export abstract class BaseEntitiy implements IBaseEntity {
   static async findAll<T extends IBaseEntity, I extends IBaseEntity>(
     this: new (entitiy: I) => T,
   ): Promise<T | null> {
-    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY,this)}`;
+    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)}`;
     // const result = await db.execute(query);
     // return result.length > 0 ? new this(result[0]) : null;
     console.log(query);
@@ -69,13 +69,28 @@ export abstract class BaseEntitiy implements IBaseEntity {
     this: new (entitiy: I) => T,
     id: number,
   ): Promise<T | null> {
-    const query = `DELETE FROM ${Reflect.getMetadata(TABLE_METADATA_KEY,this)} WHERE id=?`;
-    //const result = await db.execute(query, [id]);
-    //return result.length > 0 ? new this(result[0]) : null;
+    const query = `DELETE FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)} WHERE id=?`;
+    //await db.execute(query, [id]);
     console.log(query);
 
     return null;
   }
 
-  //static async deleteAll
+  static async deleteAll<T extends BaseEntitiy, I extends IBaseEntity>(
+    this: new (entitiy: I) => T,
+  ): Promise<T | null> {
+    const query = `DELETE FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)}`;
+    //await db.execute(query, [id]);
+    console.log(query);
+    return null;
+  }
+
+  static async deleteOne<T extends BaseEntitiy, I extends IBaseEntity>(
+    this: new (entity: I) => T,
+    conditions: Partial<I>,
+  ): Promise<T | null> {
+    const query = ``;
+    console.log(query);
+    return null;
+  }
 }

@@ -8,3 +8,4 @@ export function Table<T extends typeof BaseEntitiy>(tableName: string) {
     Reflect.defineMetadata(TABLE_METADATA_KEY, tableName, target);
   };
 }
+
