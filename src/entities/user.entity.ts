@@ -1,4 +1,4 @@
-import { BaseEntitiy, type IBaseEntity } from "./base.entitiy.js";
+import { BaseEntity, type IBaseEntity } from "./base.entity.js";
 import { Table } from "./table.decorator.js";
 
 interface IUser extends IBaseEntity {
@@ -9,8 +9,7 @@ interface IUser extends IBaseEntity {
 }
 
 @Table("users")
-export class User extends BaseEntitiy implements IUser {
-  private static TABLE_NAME = "users";
+export class User extends BaseEntity implements IUser {
   name: string;
   address: string;
   dob: Date;

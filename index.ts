@@ -27,6 +27,6 @@ await User.findOne({ name: "John Doe", email: "john.doe@example.com" });
 await User.deleteOne({ name: "John Doe", email: "john.doe@example.com" });
 
 dummyUser.address = "456 Side Street, Delhi";
-await dummyUser.update();
+await dummyUser.save();
 
-await User.update({ id: 1 }, { name: "Jane Doe", email: "jane.doe@example.com" });
+await User.updateOne({ id: 1 }, { name: "Jane Doe", email: "jane.doe@example.com" });
