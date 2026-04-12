@@ -1,7 +1,7 @@
-import { BaseEntitiy } from "./base.entitiy.js";
-import { Table } from "./table.decorator.js";
+import { BaseEntity, type IBaseEntity } from "../core/base.entity.js";
+import { Column, Table } from "../core/table.decorator.js";
 
-interface IEmployee extends BaseEntitiy {
+interface IEmployee extends IBaseEntity<number> {
   name: string;
   position: string;
   department: string;
@@ -9,10 +9,14 @@ interface IEmployee extends BaseEntitiy {
 }
 
 @Table("employee")
-export class Employee extends BaseEntitiy implements IEmployee {
+export class Employee extends BaseEntity<number> implements IEmployee {
+  @Column()
   name: string;
+  @Column()
   position: string;
+  @Column()
   department: string;
+  @Column()
   salary: number;
 
   constructor(employee: IEmployee) {
