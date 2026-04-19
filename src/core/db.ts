@@ -1,10 +1,18 @@
-export interface IDatabaseDriver {  
+
+export interface DatabaseDriverResult {
+    rows: Record<string, unknown>[];
+    affectedRows: number;
+    insertedId?: number;
+}
+
+export interface IDatabaseDriver {
     connect(): Promise<void>;
     disconnect(): Promise<void>;
-    execute(query: string, params?: any[]): Promise<any>;
+    execute(query: string, params?: unknown[]): Promise<DatabaseDriverResult>;
 
     getPlaceholderPrefix(): string;
     getInsertQuery(tableName: string, columns: string[]): string;
+    getUpsertQuery(tableName: string, columns: string[], conflictColumns: string[]): string;
     getUpdateQuery(tableName: string, columns: string[], conditions: Record<string, unknown>): string;
     getDeleteQuery(tableName: string, conditions: Record<string, unknown>, limit?: number, offset?: number): string;
     getSelectQuery(tableName: string, columns: string[], conditions?: Record<string, unknown>, limit?: number, offset?: number): string;

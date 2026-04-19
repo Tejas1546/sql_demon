@@ -1,223 +1,177 @@
-import {
-  TABLE_METADATA_KEY,
-  COLUMNS_METADATA_KEY,
-  type ColumnMetaData,
-} from "./table.decorator.js";
+import { DB } from "./db.js";
+import { Column, getColumnSqlName } from "./column.decorator.js";
+import { TABLE_METADATA_KEY } from "./table.decorator.js";
 
-export interface IBaseEntity<ID_TYPE> {
-  id: ID_TYPE | undefined;
-  createdAt: Date;
-  createdBy: number;
-  updatedAt: Date;
-  updatedBy: number;
+
+export interface IBaseEntity {
+    id?: number | undefined;
+
+    createdAt: Date;
+    createdBy: number;
+    updatedAt: Date;
+    updatedBy: number;
 }
 
-export abstract class BaseEntity<ID_TYPE> implements IBaseEntity<ID_TYPE> {
-  id: ID_TYPE | undefined;
-  createdAt: Date;
-  createdBy: number;
-  updatedAt: Date;
-  updatedBy: number;
+export abstract class BaseEntity implements IBaseEntity {
 
-  constructor(entity: IBaseEntity<ID_TYPE>) {
-    this.id = entity.id;
-    this.createdAt = entity.createdAt;
-    this.createdBy = entity.createdBy;
-    this.updatedAt = entity.updatedAt;
-    this.updatedBy = entity.updatedBy;
-  }
+    @Column()
+    id?: number | undefined;
 
-  static getTableName(): string {
-    return Reflect.getMetadata(TABLE_METADATA_KEY, this);
-  }
+    @Column()
+    createdAt: Date;
+    @Column()
+    createdBy: number;
+    @Column()
+    updatedAt: Date;
+    @Column()
+    updatedBy: number;
 
-  async save(): Promise<void> {
-    // 1. Fetch the secret dictionary of columns from the decorator
-    const columnsMetadata: ColumnMetaData[] =
-      Reflect.getMetadata(COLUMNS_METADATA_KEY, this) || [];
-
-    if (columnsMetadata.length === 0) {
-      throw new Error(
-        `No @Column decorators found on ${this.constructor.name}`,
-      );
+    constructor(entity: IBaseEntity) {
+        this.id = entity.id;
+        this.createdAt = entity.createdAt;
+        this.createdBy = entity.createdBy;
+        this.updatedAt = entity.updatedAt;
+        this.updatedBy = entity.updatedBy;
     }
 
-    const activeColumns = columnsMetadata.filter(
-      (meta) => (this as any)[meta.propertyName] !== undefined,
-    );
+    async save(): Promise<void> {
+        const ctor = this.constructor;
+        const proto = Object.getPrototypeOf(this) as object;
+        const tableName = Reflect.getMetadata(TABLE_METADATA_KEY, ctor) as string;
+        const propertyValues = Object.keys(this).reduce<Record<string, unknown>>((acc, key) => {
+            acc[key] = (this as any)[key];
+            return acc;
+        }, {});
+        const persistableValues = Object.entries(propertyValues).reduce<Record<string, unknown>>((acc, [key, value]) => {
+            if (value !== undefined) {
+                acc[key] = value;
+            }
+            return acc;
+        }, {});
+        const mappedValues = BaseEntity.mapPropertyKeysToDbColumns(proto, persistableValues);
+        const columns = Object.keys(mappedValues);
+        if (columns.length === 0) {
+            throw new Error("Cannot save entity without any mapped columns");
+        }
 
-    if (activeColumns.length === 0) {
-      throw new Error("No data provided to save");
+        const values = Object.values(mappedValues);
+        const query = DB.driver.getUpsertQuery(tableName, columns, ["id"]);
+        const result = await DB.driver.execute(query, values);
+        const resolvedId = BaseEntity.resolveNumericId(result.insertedId ?? result.rows[0]?.id);
+        if (resolvedId !== undefined) {
+            this.id = resolvedId;
+        }
+
+        const returnedRow = result.rows[0];
+        if (returnedRow) {
+            this.hydrateFromRow(proto, returnedRow);
+            return;
+        }
+
+        await this.reloadCurrentState(tableName, proto);
+    }
+    static async findAll<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, conditions?: Record<string, unknown>, limit?: number, offset?: number): Promise<T[]> {
+        const dbConditions = conditions ? BaseEntity.mapPropertyKeysToDbColumns(this.prototype, conditions) : undefined;
+        const query = DB.driver.getSelectQuery(Reflect.getMetadata(TABLE_METADATA_KEY, this), ['*'], dbConditions, limit, offset);
+        const result = await DB.driver.execute(query);
+        return result.rows.map((row) => new this(row as I));
+    }
+    static async findOne<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, conditions: Record<string, unknown>): Promise<T | null> {
+        const results = await (this as any).findAll(conditions);
+        return results.length > 0 ? results[0] : null;
+    }
+    static async findById<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, id: number): Promise<T | null> {
+        return await (this as any).findOne({ id });
+    }
+    static async deleteAll<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, conditions: Record<string, unknown>, limit?: number, offset?: number): Promise<number> {
+        const dbConditions = BaseEntity.mapPropertyKeysToDbColumns(this.prototype, conditions);
+        const query = DB.driver.getDeleteQuery(Reflect.getMetadata(TABLE_METADATA_KEY, this), dbConditions, limit, offset);
+        const result = await DB.driver.execute(query);
+        return result.affectedRows;
+    }
+    static async deleteOne<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, conditions: Record<string, unknown>): Promise<boolean> {
+        const affectedRows = await (this as any).deleteAll(conditions, 1);
+        return affectedRows > 0;
+    }
+    static async deleteById<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, id: number): Promise<boolean> {
+        return await (this as any).deleteOne({ id });
+    }
+    static async count<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, conditions?: Record<string, unknown>): Promise<number> {
+        const dbConditions = conditions ? BaseEntity.mapPropertyKeysToDbColumns(this.prototype, conditions) : undefined;
+        const query = DB.driver.getCountQuery(Reflect.getMetadata(TABLE_METADATA_KEY, this), dbConditions);
+        const result = await DB.driver.execute(query);
+        return Number(result.rows[0]?.count ?? 0);
+    }
+    static async updateAll<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, updates: Record<string, unknown>, conditions: Record<string, unknown>): Promise<number> {
+        const dbUpdates = BaseEntity.mapPropertyKeysToDbColumns(this.prototype, updates);
+        const dbConditions = BaseEntity.mapPropertyKeysToDbColumns(this.prototype, conditions);
+        const query = DB.driver.getUpdateQuery(Reflect.getMetadata(TABLE_METADATA_KEY, this), Object.keys(dbUpdates), dbConditions);
+        const params = [...Object.values(updates), ...Object.values(conditions)];
+        const result = await DB.driver.execute(query, params);
+        return result.affectedRows;
+    }
+    static async updateById<T extends BaseEntity, I extends IBaseEntity>(this: new (entity: I) => T, id: number, updates: Record<string, unknown>): Promise<boolean> {
+        const affectedRows = await (this as any).updateAll(updates, { id });
+        return affectedRows > 0;
     }
 
-    const dbColumns = activeColumns.map((meta) => meta.columnName);
-    const values = activeColumns.map(
-      (meta) => (this as any)[meta.propertyName],
-    );
+    private static mapPropertyKeysToDbColumns(
+        prototype: object,
+        values: Record<string, unknown>
+    ): Record<string, unknown> {
+        const mapped: Record<string, unknown> = {};
+        for (const [propertyName, value] of Object.entries(values)) {
+            const metadata = getColumnSqlName(prototype, propertyName);
+            const dbColumnName = metadata.dbColumnName;
+            if (!dbColumnName) {
+                continue;
+            }
+            mapped[dbColumnName] = value;
+        }
 
-    const columnsString = dbColumns.join(", ");
-    const placeholders = dbColumns.map(() => "?").join(", ");
-
-    const updateColumns = dbColumns.filter((col) => col !== "id");
-
-    const setClause =
-      updateColumns.length > 0
-        ? updateColumns.map((col) => `${col}=VALUES(${col})`).join(", ")
-        : "id=id";
-
-    const tableName = (this.constructor as typeof BaseEntity).getTableName();
-
-    const query = `INSERT INTO ${tableName} (${columnsString}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${setClause}`;
-
-    console.log("Generated Query:", query);
-    console.log("Values to Bind:", values);
-
-    // await db.execute(query, values);
-  }
-
-  static async findById<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    id: number,
-  ): Promise<T[]> {
-    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)} WHERE id=?`;
-    console.log(query);
-
-    // const result = await db.execute(query, [id]);
-    // return result.length > 0 ? new this(result[0]) : null;
-    return [];
-  }
-
-  static async findAll<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    options?: { condition?: Partial<I>; limit?: number; offset?: number },
-  ): Promise<T[]> {
-    let query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)}`;
-    const values: any[] = [];
-
-    if (options?.condition) {
-      const keys = Object.keys(options.condition);
-      if (keys.length > 0) {
-        const whereClause = keys.map((key) => `${key}=?`).join(" AND ");
-        query += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.condition));
-      }
+        return mapped;
     }
 
-    if (options?.limit !== undefined) {
-      query += ` LIMIT ?`;
-      values.push(options.limit);
-      if (options?.offset !== undefined) {
-        query += ` OFFSET ?`;
-        values.push(options.offset);
-      }
+    private async reloadCurrentState(tableName: string, prototype: object): Promise<void> {
+        const entityId = BaseEntity.resolveNumericId(this.id);
+        if (entityId === undefined) {
+            throw new Error("Cannot reload entity after save without an id");
+        }
+
+        const query = DB.driver.getSelectQuery(tableName, ["*"], { id: entityId }, 1);
+        const result = await DB.driver.execute(query);
+        const row = result.rows[0];
+        if (!row) {
+            throw new Error(`Unable to reload entity with id ${entityId} after save`);
+        }
+
+        this.hydrateFromRow(prototype, row);
     }
 
-    console.log(query);
-
-    // const result = await db.execute(query, values);
-    // return result.map((item: any) => new this(item));
-    return [];
-  }
-
-  static async findOne<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    condition: Partial<I>,
-  ): Promise<T | null> {
-    const keys = Object.keys(condition);
-    const whereClause = keys.map((key) => `${key}=?`).join(" AND ");
-    const query = `SELECT * FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)} WHERE ${whereClause} LIMIT 1`;
-    console.log(query);
-
-    // const values = Object.values(condition);
-    // const result = await db.execute(query, values);
-    // return result.length > 0 ? new this(result[0]) : null;
-    return null;
-  }
-
-  static async delete<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    options?: { condition?: Partial<I>; limit?: number },
-  ): Promise<number> {
-    let query = `DELETE FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)}`;
-    const values: any[] = [];
-
-    if (options?.condition) {
-      const keys = Object.keys(options.condition);
-      if (keys.length > 0) {
-        const whereClause = keys.map((key) => `${key}=?`).join(" AND ");
-        query += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.condition));
-      }
+    private static resolveNumericId(value: unknown): number | undefined {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+        if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+            return Number(value);
+        }
+        return undefined;
     }
 
-    if (options?.limit !== undefined) {
-      query += ` LIMIT ?`;
-      values.push(options.limit);
+    private hydrateFromRow(prototype: object, row: Record<string, unknown>): void {
+        const propertyToColumn = Object.keys(this).reduce<Record<string, string>>((acc, propertyName) => {
+            const metadata = getColumnSqlName(prototype, propertyName);
+            if (metadata.dbColumnName) {
+                acc[metadata.dbColumnName] = propertyName;
+            }
+            return acc;
+        }, {});
+
+        for (const [columnName, value] of Object.entries(row)) {
+            const propertyName = propertyToColumn[columnName] ?? columnName;
+            if (propertyName in this) {
+                (this as Record<string, unknown>)[propertyName] = value;
+            }
+        }
     }
-
-    console.log(query);
-
-    // const [result] = await db.execute(query, values);
-    // return result.affectedRows;
-    return 0;
-  }
-
-  static async update<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    data: Partial<I>,
-    options?: { condition?: Partial<I>; limit?: number },
-  ): Promise<number> {
-    const setKeys = Object.keys(data);
-    if (setKeys.length === 0) return 0;
-
-    let query = `UPDATE ${Reflect.getMetadata(TABLE_METADATA_KEY, this)} SET `;
-    const setClause = setKeys.map((key) => `${key}=?`).join(", ");
-    query += setClause;
-
-    const values: any[] = [...Object.values(data)];
-
-    if (options?.condition) {
-      const conditionKeys = Object.keys(options.condition);
-      if (conditionKeys.length > 0) {
-        const whereClause = conditionKeys.map((key) => `${key}=?`).join(" AND ");
-        query += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.condition));
-      }
-    }
-
-    if (options?.limit !== undefined) {
-      query += ` LIMIT ?`;
-      values.push(options.limit);
-    }
-
-    console.log(query);
-
-    // const [result] = await db.execute(query, values);
-    // return result.affectedRows;
-    return 0;
-  }
-
-  static async count<T extends BaseEntity<any>, I extends IBaseEntity<any>>(
-    this: new (entity: I) => T,
-    condition?: Partial<I>,
-  ): Promise<number> {
-    let query = `SELECT COUNT(*) as count FROM ${Reflect.getMetadata(TABLE_METADATA_KEY, this)}`;
-    const values: any[] = [];
-
-    if (condition) {
-      const conditionKeys = Object.keys(condition);
-      if (conditionKeys.length > 0) {
-        const whereClause = conditionKeys
-          .map((key) => `${key}=?`)
-          .join(" AND ");
-        query += ` WHERE ${whereClause}`;
-        values.push(...Object.values(condition));
-      }
-    }
-    console.log(query);
-
-    // const [result] = await db.execute(query, values);
-    // return result.length > 0 ? result[0].count : 0;
-    return 0;
-  }
 }
