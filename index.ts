@@ -1,12 +1,12 @@
 
 import { DB } from "./src/core/db.js";
-import { MySqlDriver } from "./src/drivers/mysql.driver.js";
+import { PostgreSqlDriver } from "./src/drivers/postgresql.driver.js";
 import { Employee } from "./src/entities/employee.entity.js";
 import { User } from "./src/entities/user.entity.js";
 
+const connectionString = `postgresql://${process.env["DB_USER"] ?? "postgres"}:${process.env["DB_PASSWORD"] ?? "postgres"}@${process.env["DB_HOST"] ?? "localhost"}:${process.env["DB_PORT"] ?? "5432"}/${process.env["DB_NAME"] ?? "appdb"}`;
 
-DB.setDriver(new MySqlDriver("")); // or new PostgreSqlDriver()
-// DB.setDriver(new PostgreSqlDriver());
+DB.setDriver(new PostgreSqlDriver(connectionString));
 
 async function bootstrap(): Promise<void> {
     try {

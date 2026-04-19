@@ -17,13 +17,13 @@ export abstract class BaseEntity implements IBaseEntity {
     @Column()
     id?: number | undefined;
 
-    @Column()
+    @Column({ name: 'created_at' })
     createdAt: Date;
-    @Column()
+    @Column({ name: 'created_by' })
     createdBy: number;
-    @Column()
+    @Column({ name: 'updated_at' })
     updatedAt: Date;
-    @Column()
+    @Column({ name: 'updated_by' })
     updatedBy: number;
 
     constructor(entity: IBaseEntity) {
