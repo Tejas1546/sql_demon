@@ -21,12 +21,12 @@ export class Employee extends BaseEntity implements IEmployee {
     @Column()
     salary: number;
 
-    constructor(employee: IEmployee) {
-        super(employee);
-        this.name = employee.name;
-        this.position = employee.position;
-        this.department = employee.department;
-        this.salary = employee.salary;
+    constructor(employee: Partial<IEmployee> = {}) {
+        super(employee as IBaseEntity);
+        this.name = (employee.name ?? '') as string;
+        this.position = (employee.position ?? '') as string;
+        this.department = (employee.department ?? '') as string;
+        this.salary = Number(employee.salary ?? 0);
     }
 
 }

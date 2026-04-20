@@ -23,12 +23,12 @@ export class User extends BaseEntity implements IUser {
     email: string;
 
 
-    constructor(user: IUser) {
-        super(user);
-        this.name = user.name;
-        this.address = user.address;
-        this.dob = user.dob;
-        this.email = user.email;
+    constructor(user: Partial<IUser> = {}) {
+        super(user as IBaseEntity);
+        this.name = (user.name ?? '') as string;
+        this.address = (user.address ?? '') as string;
+        this.dob = (user.dob ?? new Date(0)) as Date;
+        this.email = (user.email ?? '') as string;
     }
     
 }
