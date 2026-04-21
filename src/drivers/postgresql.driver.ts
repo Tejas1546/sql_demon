@@ -58,6 +58,11 @@ export class PostgreSqlDriver implements IDatabaseDriver {
     };
   }
 
+  //used to excape the names bought in by the user
+  escapeIdentifier(identifier: string): string {
+    return `\`${identifier.replace(/`/g, '"')}\``;
+  }
+
   getPlaceholderPrefix(): string {
     return "$";
   }
