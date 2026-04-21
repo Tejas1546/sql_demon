@@ -1,37 +1,37 @@
-import oracledb from "oracledb";
+import { DB } from "./src/core/db.js";
+import { OracleSqlDriver } from "./src/drivers/oracle.driver.js";
 
-async function testConnection() {
-  let connection;
+// Match the credentials from your docker-compose.yml
+const oracleConfig = {
+  user: "orm_user",
+  password: "orm_pass_123",
+  connectString: "localhost:1521/FREEPDB1"
+};
 
+// 1. Inject the new driver
+DB.setDriver(new OracleSqlDriver(oracleConfig));
+
+async function smokeTest() {
   try {
-    console.log("Attempting to connect to Oracle...");
+    console.log("⏳ Connecting to Oracle in Docker...");
+    await DB.driver.connect();
+    console.log("✅ Connection established!");
 
-    // Connect using the specific user we created in the docker-compose file
-    connection = await oracledb.getConnection({
-      user: "orm_user",
-      password: "orm_pass_123",
-      // Host : Port / ServiceName
-      connectString: "localhost:1521/FREEPDB1",
-    });
+    console.log("⏳ Executing smoke test query...");
+    const result = await DB.driver.execute("SELECT 'Oracle ORM is alive!' AS status FROM DUAL");
+    console.log("✅ Query successful. Result:", result.rows);
 
-    console.log("✅ Successfully connected to Oracle!");
-
-    // Another Oracle Quirk: You can't just run "SELECT 1".
-    // Oracle requires a FROM clause. We use the dummy table "DUAL".
-    const result = await connection.execute("SELECT 1 AS status FROM DUAL");
-    console.log("Database says:", result.rows);
   } catch (err) {
-    console.error("❌ Connection failed:", err);
+    console.error("❌ Smoke test failed:", err);
   } finally {
-    if (connection) {
-      try {
-        await connection.close();
-        console.log("Connection closed.");
-      } catch (err) {
-        console.error("Error closing connection:", err);
-      }
+    try {
+      console.log("⏳ Disconnecting...");
+      await DB.driver.disconnect();
+      console.log("✅ Disconnected safely.");
+    } catch (err) {
+      console.error("Error during disconnect:", err);
     }
   }
 }
 
-testConnection();
+void smokeTest();
