@@ -1,50 +1,15 @@
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    environment:
-      NODE_ENV: production
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: appdb
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: appdb
+  oracledb:
+    image: gvenzl/oracle-free:latest
+    container_name: custom_orm_oracle
     ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  pgadmin:
-    image: dpage/pgadmin4
+      - "1521:1521"
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      db:
-        condition: service_healthy
+      - ORACLE_PASSWORD=oracle_pass_123
+      - APP_USER=orm_user
+      - APP_USER_PASSWORD=orm_pass_123
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - oracle_data:/opt/oracle/oradata
 
 volumes:
-  pgdata:
-  pgadmin_data:
+  oracle_data:

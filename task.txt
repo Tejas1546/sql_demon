@@ -1,0 +1,74 @@
+Phase 1: Environment & Setup
+1. Spin up the Oracle Docker Container
+
+Create a docker-compose.yml file using the gvenzl/oracle-free image.
+
+Map port 1521 and set a secure ORACLE_PASSWORD.
+
+Start it up in the background (docker compose up -d). Keep in mind it will take a minute or two to fully initialize the first time.
+
+2. Install the Official Driver
+
+Run npm install oracledb.
+
+Note: As of version 6, this installs the "Thin mode" driver by default, meaning you do not need to install any heavy Oracle client software on your machine. It is pure JavaScript.
+
+Phase 2: Scaffolding the Driver (oracle.driver.ts)
+3. Create the Class and Connection Logic
+
+Create src/drivers/oracle.driver.ts.
+
+Implement export class OracleSqlDriver implements IDatabaseDriver.
+
+Implement connect(): Pass your connection object (user, password, connectString) to oracledb.getConnection().
+
+Implement disconnect(): Call await this.connection.close().
+
+Phase 3: The Standard SQL Generators
+4. Implement Placeholders
+
+Oracle uses colon-prefixed numbers for array binds.
+
+getPlaceholderPrefix() should return ":".
+
+getNumberedPlaceholder(index) should return :${index} (so it generates :1, :2, :3).
+
+5. Implement the Basic CRUD Queries
+
+Insert, Update, Delete, Count: These will look almost identical to your PostgreSQL implementation, just using the : placeholders instead of $.
+
+Select (Pagination): Update getSelectQuery(). Oracle doesn't use LIMIT and OFFSET. You will need to use Oracle's fetch syntax:
+
+Instead of LIMIT 10 OFFSET 5, you will append: OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY.
+
+Phase 4: The Oracle "Gotchas" (The Hard Part)
+6. Implement the MERGE Statement (getUpsertQuery)
+
+Oracle does not have ON CONFLICT or ON DUPLICATE KEY. You must build a MERGE query.
+
+Your string template will look roughly like this:
+
+SQL
+MERGE INTO my_table t
+USING (SELECT :1 AS id, :2 AS name, :3 AS email FROM dual) s
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET t.name = s.name, t.email = s.email
+WHEN NOT MATCHED THEN INSERT (id, name, email) VALUES (s.id, s.name, s.email)
+7. Implement the execute() Method
+
+Auto-Commit: By default, oracledb requires manual commits. You must pass { autoCommit: true } in your execution options.
+
+Parsing Rows: Pass { outFormat: oracledb.OUT_FORMAT_OBJECT } so Oracle returns rows as JSON objects (like MySQL/Postgres) instead of raw arrays.
+
+Returning IDs: If you execute an INSERT and want the new ID, Oracle requires a RETURNING id INTO :out_id syntax. In your execute() method, you will have to detect if it's an insert, push an oracledb.OUT_BIND object into your params array, and extract it from result.outBinds after execution.
+
+Phase 5: Testing
+8. Update index.ts
+
+Swap out PostgreSqlDriver for OracleSqlDriver.
+
+Update your connection string to target the Docker container (e.g., localhost:1521/FREEPDB1).
+
+Run your script!
+
+Which phase do you want to tackle first? I can provide the exact docker-compose.yml to get your database running, or we can jump straight into writing the scaffolding for oracle.driver.ts.
