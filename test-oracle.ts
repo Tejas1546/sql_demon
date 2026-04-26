@@ -1,16 +1,24 @@
 import { DB } from "./src/core/db.js";
 import { OracleSqlDriver } from "./src/drivers/oracle.driver.js";
 
-// Match the credentials from your docker-compose.yml
+// Connection credentials matching the APP_USER / APP_USER_PASSWORD set in docker-compose.yml.
+// connectString format: "host:port/serviceName"
 const oracleConfig = {
   user: "orm_user",
   password: "orm_pass_123",
-  connectString: "localhost:1521/FREEPDB1"
+  connectString: "localhost:1521/FREEPDB1",
 };
 
-// 1. Inject the new driver
+// Register the Oracle driver as the active database driver for this smoke test.
 DB.setDriver(new OracleSqlDriver(oracleConfig));
 
+// Smoke test that verifies:
+//   1. The Oracle Docker container is reachable and accepting connections.
+//   2. The OracleSqlDriver's connect() and execute() methods work correctly.
+//   3. The result is returned in the expected { rows, affectedRows } shape.
+//
+// Note: Oracle requires a FROM clause on every SELECT — "FROM DUAL" is Oracle's
+// built-in dummy table used when no real table is needed.
 async function smokeTest() {
   try {
     console.log("⏳ Connecting to Oracle in Docker...");
@@ -24,6 +32,7 @@ async function smokeTest() {
   } catch (err) {
     console.error("❌ Smoke test failed:", err);
   } finally {
+    // Always close the connection, even if the query failed.
     try {
       console.log("⏳ Disconnecting...");
       await DB.driver.disconnect();
