@@ -45,7 +45,10 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * - OUT_FORMAT_OBJECT → Returns rows as key/value objects instead of raw arrays,
    *                        so the shape matches what BaseEntity.hydrateFromRow() expects.
    */
-  async execute(query: string, params: unknown[] = []): Promise<DatabaseDriverResult> {
+  async execute(
+    query: string,
+    params: unknown[] = [],
+  ): Promise<DatabaseDriverResult> {
     if (!this.connection) {
       throw new Error("Not Connected to db");
     }
@@ -65,9 +68,62 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * This prefix ":" is used by getNumberedPlaceholder() to build bind variable strings.
    */
   getPlaceholderPrefix(): string {
-    throw new Error("not implemented");
+    return ":";
   }
 
+  getNumberedPlaceholder(index: number): string {
+    return `:${index}`;
+  }
+
+  /**
+   * Builds a WHERE clause string from a conditions object.
+   * Values are inlined (not parameterized) using serializeValue() — used for WHERE clauses
+   * in SELECT/DELETE/COUNT where the driver doesn't pass a separate params array.
+   */
+  private getWhereClause(conditions?: Record<string, unknown>): string {
+    if (!conditions || Object.keys(conditions).length === 0) {
+      return "";
+    }
+
+    const entries = Object.entries(conditions);
+    const predicates = entries.map(
+      ([column, value]) => `${column} = ${this.serializeValue(value)}`,
+    );
+    return ` WHERE ${predicates.join(" AND ")}`;
+  }
+
+  /**
+   comment here
+   */
+  private serializeValue(value: unknown): string {
+    if (value === null) {
+      return "NULL";
+    }
+
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) {
+        throw new Error(`Invalid numeric value: ${value}`);
+      }
+      return value.toString();
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "TRUE" : "FALSE";
+    }
+
+    if (value instanceof Date) {
+      // PostgreSQL accepts ISO 8601 datetime strings directly.
+      return `'${value.toISOString()}'`;
+    }
+
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+
+    const serialized =
+      typeof value === "string" ? value : JSON.stringify(value);
+    return `'${serialized.replace(/'/g, "''")}'`;
+  }
   /**
    * Builds a parameterized INSERT statement using Oracle's :1, :2 ... bind syntax.
    * Similar to PostgreSQL's $1, $2 but with colons instead of dollar signs.
@@ -81,7 +137,11 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * Oracle has no ON CONFLICT (PG) or ON DUPLICATE KEY (MySQL).
    * MERGE matches on conflictColumns (e.g. id), updates if matched, inserts if not.
    */
-  getUpsertQuery(tableName: string, columns: string[], conflictColumns: string[]): string {
+  getUpsertQuery(
+    tableName: string,
+    columns: string[],
+    conflictColumns: string[],
+  ): string {
     throw new Error("not implemented");
   }
 
@@ -90,7 +150,11 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * conditions map to the WHERE clause; columns map to the SET clause.
    * Placeholder indices continue from where the SET clause left off.
    */
-  getUpdateQuery(tableName: string, columns: string[], conditions: Record<string, unknown>): string {
+  getUpdateQuery(
+    tableName: string,
+    columns: string[],
+    conditions: Record<string, unknown>,
+  ): string {
     throw new Error("not implemented");
   }
 
@@ -99,7 +163,12 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * Oracle does not support LIMIT on DELETE directly.
    * Pagination (limit/offset) requires a subquery using ROWNUM or FETCH syntax.
    */
-  getDeleteQuery(tableName: string, conditions: Record<string, unknown>, limit?: number, offset?: number): string {
+  getDeleteQuery(
+    tableName: string,
+    conditions: Record<string, unknown>,
+    limit?: number,
+    offset?: number,
+  ): string {
     throw new Error("not implemented");
   }
 
@@ -108,15 +177,24 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * Oracle does not use LIMIT/OFFSET — pagination uses:
    *   OFFSET n ROWS FETCH NEXT m ROWS ONLY
    */
-  getSelectQuery(tableName: string, columns: string[], conditions?: Record<string, unknown>, limit?: number, offset?: number): string {
-    throw new Error("not implemented");
+  getSelectQuery(
+    tableName: string,
+    columns: string[],
+    conditions?: Record<string, unknown>,
+    limit?: number,
+    offset?: number,
+  ): string {
+    let query = `SELECT ${columns.join(", ")} FROM ${tableName}`;
   }
 
   /**
    * Builds a COUNT(*) query with an optional WHERE clause.
    * Used by BaseEntity.count() to return the number of matching rows.
    */
-  getCountQuery(tableName: string, conditions?: Record<string, unknown>): string {
-    throw new Error("not implemented");
+  getCountQuery(
+    tableName: string,
+    conditions?: Record<string, unknown>,
+  ): string {
+    return `SELECT COUNT(*) AS count FROM ${tableName}${this.getWhereClause(conditions)}`;
   }
 }
