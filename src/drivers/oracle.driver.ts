@@ -129,7 +129,10 @@ export class OracleSqlDriver implements IDatabaseDriver {
    * Similar to PostgreSQL's $1, $2 but with colons instead of dollar signs.
    */
   getInsertQuery(tableName: string, columns: string[]): string {
-    throw new Error("not implemented");
+    const placeholders = columns
+      .map((column, index) => this.getNumberedPlaceholder(index + 1))
+      .join(", ");
+    return `insert into ${tableName} (${columns.join(", ")}) values (${placeholders}) returning id into :id`;
   }
 
   /**
@@ -155,7 +158,18 @@ export class OracleSqlDriver implements IDatabaseDriver {
     columns: string[],
     conditions: Record<string, unknown>,
   ): string {
-    throw new Error("not implemented");
+    const setClause = columns
+      .map(
+        (column, index) =>
+          `${column} = ${this.getNumberedPlaceholder(index + 1)}`,
+      )
+      .join(", ");
+    const conditionKeys = Object.keys(conditions);
+    const whereClause =
+      conditionKeys.length > 0
+        ? ` WHERE ${conditionKeys.map((column, index) => `${column} = ${this.getNumberedPlaceholder(columns.length + index + 1)}`).join(" AND ")}`
+        : "";
+    return `UPDATE ${tableName} SET ${setClause}${whereClause}`;
   }
 
   /**
@@ -184,7 +198,18 @@ export class OracleSqlDriver implements IDatabaseDriver {
     limit?: number,
     offset?: number,
   ): string {
-    let query = `SELECT ${columns.join(", ")} FROM ${tableName}`;
+    const whereClause = this.getWhereClause(conditions);
+    const query = [
+      `SELECT ${columns.join(", ")} FROM ${tableName}`,
+      whereClause,
+    ];
+    if (offset) {
+      query.push(`OFFSET ${offset} ROWS`);
+    }
+    if (limit) {
+      query.push(`FETCH NEXT ${limit} ROWS ONLY`);
+    }
+    return query.join(" ");
   }
 
   /**

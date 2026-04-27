@@ -100,12 +100,19 @@ export class MySqlDriver implements IDatabaseDriver {
   }
 
   /**
+   * Returns a positional placeholder for MySQL.
+   */
+  getPositionalPlaceholder(_index?: number): string {
+    return this.getPlaceholderPrefix();
+  }
+
+  /**
    * Builds a basic INSERT query using "?" placeholders.
    * e.g. INSERT INTO users (name, email) VALUES (?, ?)
    */
   getInsertQuery(tableName: string, columns: string[]): string {
     const placeholders = columns
-      .map(() => this.getPlaceholderPrefix())
+      .map(() => this.getPositionalPlaceholder())
       .join(", ");
     return `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders})`;
   }
@@ -122,7 +129,7 @@ export class MySqlDriver implements IDatabaseDriver {
     _conflictColumns: string[],
   ): string {
     const placeholders = columns
-      .map(() => this.getPlaceholderPrefix())
+      .map(() => this.getPositionalPlaceholder())
       .join(", ");
     const updateColumns = columns.filter((column) => column !== "id");
     const updateAssignments = updateColumns.map(
@@ -144,12 +151,12 @@ export class MySqlDriver implements IDatabaseDriver {
     conditions: Record<string, unknown>,
   ): string {
     const setClause = columns
-      .map((column) => `${column} = ${this.getPlaceholderPrefix()}`)
+      .map((column) => `${column} = ${this.getPositionalPlaceholder()}`)
       .join(", ");
     const conditionKeys = Object.keys(conditions);
     const whereClause =
       conditionKeys.length > 0
-        ? ` WHERE ${conditionKeys.map((column) => `${column} = ${this.getPlaceholderPrefix()}`).join(" AND ")}`
+        ? ` WHERE ${conditionKeys.map((column) => `${column} = ${this.getPositionalPlaceholder()}`).join(" AND ")}`
         : "";
 
     return `UPDATE ${tableName} SET ${setClause}${whereClause}`;
@@ -209,12 +216,13 @@ export class MySqlDriver implements IDatabaseDriver {
     return query.join(" ");
   }
 
-  /** Builds a COUNT(*) query with an optional WHERE clause. */
+  /** Builds a COUNT(*) query with an optional WHERE clause.
+   * CAST to UNSIGNED ensures the result comes back as a number, not a string. */
   getCountQuery(
     tableName: string,
     conditions?: Record<string, unknown>,
   ): string {
-    return `SELECT COUNT(*) AS count FROM ${tableName}${this.getWhereClause(conditions)}`;
+    return `SELECT CAST(COUNT(*) AS UNSIGNED) AS count FROM ${tableName}${this.getWhereClause(conditions)}`;
   }
 
   /**
